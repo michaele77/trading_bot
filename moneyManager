@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Jul 21 00:30:47 2020
+
+@author: ershov
+"""
+
+import config
+
+import alpaca_trade_api as tradeapi
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+import pickle
+
+class BankAccount:
+    def __init__(self, trackerData, cashPool, tradStrat, heuristic, volumeScale):
+        self.trackerData = trackerData
+        self.cashPool = cashPool
+        self.stockOwnership = 0
+        self.totalAssets = cashPool
+        
+        self.tradStrat = tradStrat
+        self.volumeScale = volumeScale
+        self.heuristic = heuristic
+        
+        self.account = None
+        
+    
+    #Plays out a strategy with the given conditions
+    def timeLapse(self):
+        
+        refTime = heuristic.refTime
+        dTime = heuristic.data[:-1]
+        data = heuristic.data[:,1]
+        
+        timeLapse = np.zeros(len(refTime))
+        
+        if tradStrat == 'passive':
+            #This means we want to passively invest money as a ref (tracking the market)
+            #Assume no other income
+            #So, we just invest an average of the cashPool over the time period
+            #Assume over 9 years (only count trading days)
+            #Invest everytime we have enough money to buy a stock
+            
+            
+            #algo sets up offset point from moving average; line up everything with that
+            offset = refTime[0]
+            dayArr = np.r_[offset:floor(refTime[-1]) + 1]
+#            daysElapsed = dTime[-1] - offset
+            moneyPerDay = cashPool / len(dayArr)
+            
+            moneyBuffer = 0 #Buffer for money to buy stock
+            
+            ##TODO
+            for i in range(len(dayArr)):
+                moneyBuffer += moneyPerDay
+                currDay_idx = np.where(dTime == floor(dayArr[i]))
+                if moneyBuffer >= data[currDay_idx]:
+                    moneyBuffer -= data[currDay_idx]
+                    cashPool -= data[currDay_idx]
+                    self.stockOwnership += 1
+                    
+                self.totalAssets = self.stockOwnership*data[currDay_idx] + cashPool
+#                timeLapse[]
+                
+                    
+                stockPerDay = moneyPerDay*
+                
+                self.investPool += moneyPerDay
+                
+            
+            
+            
+            
+        elif tradStrat == 'allin':
+            #This means we want to dump all the money at the start
+            #Would directly translate stock price to money
+            
+            
+            
+            
+            
+            
+            ##TODO
+            
+            
+            
+            
+        elif tradStrat == 'heuristic':
+            #this means a heuristic has been applied
+            ##TODO
+            
