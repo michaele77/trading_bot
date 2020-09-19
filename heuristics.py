@@ -21,6 +21,7 @@ alpaca_marker_data --> data_loader
 #--> update? if 2 minutes have gone by, feed in only 2 new points. Loader + vars are updated.
 
 import config
+import os
 
 import alpaca_trade_api as tradeapi
 import pandas as pd
