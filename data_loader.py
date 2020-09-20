@@ -41,7 +41,9 @@ if userIn == '1':
     
     mySP = StockPredictor('invmean', 'data')
     
-    mySP.data_loader(fullData['SPY'][:,np.r_[0:2, -1]])
+#    mySP.data_loader(fullData['SPY'][:,np.r_[0:2, -1]])
+#    mySP.data_loader(fullData['TSLA'][:,np.r_[0:2, -1]])
+    mySP.data_loader(fullData['AAPL'][:,np.r_[0:2, -1]])
     
 
 
@@ -49,14 +51,18 @@ mydir = os.path.join(os.getcwd(), datetime.datetime.now().strftime('%Y-%m-%d_%H-
 os.makedirs(mydir)
 
 
-x_lowVal = 1750
-x_hiVal = 2000
+x_lowVal = 1550
+x_hiVal = 3400
 
-y_lowVal = 0
-y_hiVal = 16000
+y_lowVal = 6000
+y_hiVal = 36000
 
 plt.figure(8)
-plt.plot(fullData['SPY'][:,-1], fullData['SPY'][:,1])
+#plt.plot(fullData['SPY'][:,-1], fullData['SPY'][:,1])
+#plt.plot(fullData['TSLA'][:,-1], fullData['TSLA'][:,1])
+plt.plot(fullData['AAPL'][:,-1], fullData['AAPL'][:,1])
+
+
 
 plt.plot(mySP.refTime, mySP.heurData)
 #plt.plot(mySP.refTime[0:-1], 100*np.diff(mySP.prediction))
