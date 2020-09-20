@@ -33,7 +33,9 @@ import os, datetime
 
 userIn = input('Rerun?')
 if userIn == '1':
-    f = open('test_data/stockdata_7_27.pckl', 'rb')
+#    f = open('test_data/stockdata_7_27.pckl', 'rb')
+    f = open('test_data/stockdata_9_19.pckl', 'rb')
+    
     fullData = pickle.load(f)
     f.close()
     
@@ -47,12 +49,18 @@ mydir = os.path.join(os.getcwd(), datetime.datetime.now().strftime('%Y-%m-%d_%H-
 os.makedirs(mydir)
 
 
+x_lowVal = 1750
+x_hiVal = 2000
+
+y_lowVal = 0
+y_hiVal = 16000
+
 plt.figure(8)
 plt.plot(fullData['SPY'][:,-1], fullData['SPY'][:,1])
 
 plt.plot(mySP.refTime, mySP.heurData)
-plt.plot(mySP.refTime, 70*mySP.prediction)
-plt.plot(mySP.refTime[0:-1], 100*np.diff(mySP.prediction))
+#plt.plot(mySP.refTime[0:-1], 100*np.diff(mySP.prediction))
+#plt.plot(mySP.refTime, 70*mySP.prediction)
 
 diffPred = np.diff(mySP.prediction)
 
@@ -67,19 +75,24 @@ plt.ylim([-10,10])
 
 endPoint = 3150
 plt.xlim([.7,3002])
+plt.xlim([x_lowVal,x_hiVal])
+plt.title('General heuristic and prediction values')
+plt.legend(['Heuristic Value'])
 #plt.savefig('heuristic_plots/invmean_SPY_2months.eps', format='eps')
 
 
 
 plt.figure(1)
-plt.plot(mySP.refTime, mySP.toBuy, 'o')
-plt.plot(mySP.refTime, mySP.integratorRaw, 'o')
+plt.plot(mySP.refTime, 5*mySP.toBuy, 'o')
+plt.plot(mySP.refTime, mySP.integratorRaw)
 #plt.plot(mySP.refTime[0:-1], np.diff(mySP.refTime), 'o')
 plt.legend(['Buy?', 'raw'])
 
 plt.xlim([2020,2050])
 #plt.ylim([-10,10])
-
+plt.xlim([x_lowVal,x_hiVal])
+plt.ylim([-10,10])
+plt.title('Integrator Debug Values')
 plt.grid()
 
 
@@ -114,6 +127,8 @@ firstIndx = np.where(mySP.data[:,-1] == passiveT[0])
 scaler = float(passiveData[0] / mySP.data[firstIndx,1])
 
 plt.plot(mySP.data[:,-1], scaler * mySP.data[:,1])
+plt.xlim([x_lowVal,x_hiVal])
+plt.ylim([y_lowVal,y_hiVal])
 plt.legend(['Passive Investing', 'All in', 'Simple Heuristic', 'Simp debug', 'Stock Price'])
 plt.title('Stock Price Scaled by ' + str(scaler))
 #plt.xlim([500,1000])
@@ -128,6 +143,8 @@ plt.plot(mySP.data[:,-1], scaler * mySP.data[:,1])
 plt.plot(simpheurT, 50*debugArr, 'o')
 plt.plot(simpheurT, cashArr)
 plt.plot(simpheurT, stockArr)
+plt.xlim([x_lowVal,x_hiVal])
+plt.ylim([y_lowVal,y_hiVal])
 plt.grid()
 plt.title('Simple Heuristic Strategy Breakdown')
 plt.legend(['Stock Price', 'Simp Debug', 'Cash', 'Stock Value'])

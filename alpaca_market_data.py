@@ -137,7 +137,9 @@ def mergeTimes(func_Data):
             if int(currMin - prevMin) > 0:
                 
                 minTracker += currMin - prevMin
-                firstFlag = True
+                if firstFlag == False:
+                    minuteStart_index = i
+                    firstFlag = True
             elif int(currMin - prevMin) < 0:
                 minTracker += 60 - prevMin + currMin
             
@@ -174,6 +176,9 @@ def mergeTimes(func_Data):
     
     dayIndex = dayArr + scaleMinArr
     data = np.concatenate((data, dayIndex.reshape(len(dayIndex),1)), axis = 1)
+    
+    #Now, cut out all data that isnt in minutes (new addition)
+    data = data[minuteStart_index ::,:]
     
     return data
        
@@ -299,11 +304,11 @@ if userInput == '1':
                 
         
         
-    f = open('test_data/stockdata_7_14.pckl', 'wb')
+    f = open('test_data/stockdata_9_19.pckl', 'wb')
     pickle.dump(fullDataDict, f)
     f.close()
     
-    f = open('test_data/stockdata_7_14.pckl', 'rb')
+    f = open('test_data/stockdata_9_19.pckl', 'rb')
     testDict = pickle.load(f)
     f.close()
     
@@ -326,11 +331,11 @@ elif userInput == '2':
     
     
     #Now do normal saving process
-    f = open('test_data/stockdata_7_27.pckl', 'wb')
+    f = open('test_data/stockdata_9_19.pckl', 'wb')
     pickle.dump(fullDataDict, f)
     f.close()
     
-    f = open('test_data/stockdata_7_27.pckl', 'rb')
+    f = open('test_data/stockdata_9_19.pckl', 'rb')
     testDict = pickle.load(f)
     f.close()
     

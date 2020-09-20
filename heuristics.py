@@ -64,18 +64,25 @@ class StockPredictor:
             scaler = int(6.5*60)
             scaler = int(1) #use with where function
             
-            window_avg = int(3*30*scaler)
-            window_rec = int(5*scaler)
+#            window_avg = int(3*30*scaler)
+#            window_rec = int(5*scaler)
+            window_avg = int(3*scaler)
             
-            #do a combined loop, recent and long term windows should be in lockstep
-            tempIndx, = np.where(window_avg <= mainTime) #assuming we are still in days
-            firstWindow = min(tempIndx)
+#            window_rec = int(1*scaler)
+            window_rec = 90/460 #Should correspond to 90 minutes
+            
+#            #do a combined loop, recent and long term windows should be in lockstep
+#            tempIndx, = np.where(window_avg <= mainTime) #assuming we are still in days
+#            firstWindow = min(tempIndx)
+            
+            #Don't know why the above is some array thing... a relic i think
+            firstWindow = window_avg
             
             avgArr = np.zeros(dataLen - firstWindow)
             recArr = np.zeros(dataLen - firstWindow)
             refTime = np.zeros(dataLen - firstWindow)
             
-            nonEff_flag = True
+            nonEff_flag = False #THIS SHOULD BE TRUE IF USING DAYS + MINS COMBO
             cntr = 0
             effCounter = 0
             for i in range(firstWindow, dataLen):
@@ -102,8 +109,8 @@ class StockPredictor:
                     
                     minPerDay = 460
                     
-                    avgArr[cntr] = np.sum(mainData[i - window_avg*minPerDay:i]) / (window_avg*minPerDay)
-                    recArr[cntr] = np.sum(mainData[i - window_rec*minPerDay:i]) / (window_rec*minPerDay)
+                    avgArr[cntr] = np.sum(mainData[i - round(window_avg*minPerDay):i]) / (round(window_avg*minPerDay))
+                    recArr[cntr] = np.sum(mainData[i - round(window_rec*minPerDay):i]) / (round(window_rec*minPerDay))
                     refTime[cntr] = self.data[i-1,-1]
                     
                     
@@ -152,17 +159,24 @@ class StockPredictor:
         predArr = np.zeros(len(meanRev))
         reverseThresh = abs(np.mean(mainData)*0.02) #Trying to get thresh at about 5
         
+        
+        #OLD PREDICTION ARRAY:
         #Prediction array will output a 1 for buy, -1 for sell, 0 for hold
+#        eps = 0.00000000000001
+#        for currIdx in range(len(meanRev)):
+#            currAvg = np.sum(meanRev[0:currIdx]) / (len(meanRev[0:currIdx]) + eps)
+#            if meanRev[currIdx] - currAvg > reverseThresh:
+#                predArr[currIdx] = 1
+#            elif meanRev[currIdx] - currAvg < -reverseThresh:
+#                predArr[currIdx] = -1
+                
+        #NEW PREDICTION ARRAY: Dont threshold, use a pressure-based integration
+        #therefore, the predArr essentially gets removed (there's no thresholding anymore)
+        #Simply set it equal to the meanRev to preserve the variable in case we want to revert back
         eps = 0.00000000000001
         for currIdx in range(len(meanRev)):
-            currAvg = np.sum(meanRev[0:currIdx]) / (len(meanRev[0:currIdx]) + eps)
-            if meanRev[currIdx] - currAvg > reverseThresh:
-                predArr[currIdx] = 1
-            elif meanRev[currIdx] - currAvg < -reverseThresh:
-                predArr[currIdx] = -1
-                
-                
-                
+            predArr[currIdx] = meanRev[currIdx]
+  
                 
         #~~~~~~~~~~~~~~
         ##Now we construct the integrator
@@ -183,7 +197,8 @@ class StockPredictor:
         #when it hits, buy enough to offset the integration back to 0
         #for now, buy equal quantities, so just use 1's and 0's and -1's
         
-        tripPoint = 2 #2 days
+        tripScaler = 1 #Scales the trip-point (which is counted in days) by average avg - rec difference
+        tripPoint = 0.2*tripScaler #2 days
         buyArr = np.zeros(len(refTime))
         
         integratorArr = np.zeros(len(refTime))
