@@ -8,6 +8,10 @@ alpaca_marker_data --> data_loader
                         |classes|
                         V       V
                heuristics ---> moneyManager
+               
+               
+               
+               
 """
 
 
@@ -126,7 +130,7 @@ plt.figure(2)
 plt.plot(passiveT, passiveData)
 plt.plot(allinT, allinData)
 plt.plot(simpheurT, simpheurData)
-plt.plot(simpheurT, 50*debugArr, 'o')
+plt.plot(simpheurT, debugArr, 'o')
 
 #Scale stock price to match first passive investing point
 firstIndx = np.where(mySP.data[:,-1] == passiveT[0])
@@ -137,7 +141,7 @@ plt.xlim([x_lowVal,x_hiVal])
 plt.ylim([y_lowVal,y_hiVal])
 plt.legend(['Passive Investing', 'All in', 'Simple Heuristic', 'Simp debug', 'Stock Price'])
 plt.title('Stock Price Scaled by ' + str(scaler))
-#plt.xlim([500,1000])
+#plt.xlim([2000,2200])
 plt.grid()
 
 plt.savefig(mydir + '/GrowthOverTime.eps', format='eps')

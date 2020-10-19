@@ -44,6 +44,12 @@ class StockPredictor:
         self.integratorSuper = None
         self.refTime = None
         
+        self.sweepParam_avgT = None
+        self.sweepParam_recT = None
+        self.sweepParam_thresh = None
+        
+        self.debug_scaleArr = None
+        
     def data_loader(self, dataInput):
         self.data = dataInput
         #Now call own prediction function AT loading time
@@ -61,28 +67,41 @@ class StockPredictor:
             #Take moving average of last 3 months and compare to last 5 days
             #scale to minutes (for now...not accurate before 2015)
             #We trade 9:30am to 4:00pm on EST for normal hours
-            scaler = int(6.5*60)
-            scaler = int(1) #use with where function
+
             
-#            window_avg = int(3*30*scaler)
-#            window_rec = int(5*scaler)
-            window_avg = int(3*scaler)
+            #Here, we decide whether to use a function input or default params in this class
+            if self.sweepParam_avgT is None:
+                window_avg = 3
+                window_avg = 0.5
+            else:
+                window_avg = self.sweepParam_avgT
             
-#            window_rec = int(1*scaler)
-            window_rec = 90/460 #Should correspond to 90 minutes
+            if self.sweepParam_recT is None: 
+#                window_rec = 90/460 #Should correspond to 90 minutes
+                window_rec = 90/331.246 #Should correspond to 90 minutes
+                window_rec = 0.6 
+            else:
+                window_rec = self.sweepParam_recT
             
 #            #do a combined loop, recent and long term windows should be in lockstep
 #            tempIndx, = np.where(window_avg <= mainTime) #assuming we are still in days
 #            firstWindow = min(tempIndx)
             
             #Don't know why the above is some array thing... a relic i think
-            firstWindow = window_avg
+            nonEff_flag = False #THIS SHOULD BE TRUE IF USING DAYS + MINS COMBO
+#            minPerDay = 460
+            minPerDay = 331.246
+            
+            if nonEff_flag:
+                firstWindow = window_avg
+            else:
+                firstWindow = round(window_avg*minPerDay)
             
             avgArr = np.zeros(dataLen - firstWindow)
             recArr = np.zeros(dataLen - firstWindow)
             refTime = np.zeros(dataLen - firstWindow)
             
-            nonEff_flag = False #THIS SHOULD BE TRUE IF USING DAYS + MINS COMBO
+            
             cntr = 0
             effCounter = 0
             for i in range(firstWindow, dataLen):
@@ -107,7 +126,7 @@ class StockPredictor:
                     #450 seemed like the most common mintes in a day but they vary...largest was 600
                     #just use 460 (will be slightly conservative but will be a p good estimation)
                     
-                    minPerDay = 460
+                    
                     
                     avgArr[cntr] = np.sum(mainData[i - round(window_avg*minPerDay):i]) / (round(window_avg*minPerDay))
                     recArr[cntr] = np.sum(mainData[i - round(window_rec*minPerDay):i]) / (round(window_rec*minPerDay))
@@ -157,7 +176,7 @@ class StockPredictor:
                    
 #        if self.predictor_type == 'prediction':
         predArr = np.zeros(len(meanRev))
-        reverseThresh = abs(np.mean(mainData)*0.02) #Trying to get thresh at about 5
+#        reverseThresh = abs(np.mean(mainData)*0.02) #Trying to get thresh at about 5
         
         
         #OLD PREDICTION ARRAY:
@@ -197,8 +216,12 @@ class StockPredictor:
         #when it hits, buy enough to offset the integration back to 0
         #for now, buy equal quantities, so just use 1's and 0's and -1's
         
-        tripScaler = 1 #Scales the trip-point (which is counted in days) by average avg - rec difference
-        tripPoint = 0.2*tripScaler #2 days
+        if self.sweepParam_thresh is None:
+            tripScaler = 1 #Scales the trip-point (which is counted in days) by average avg - rec difference
+            tripPoint = 0.2*tripScaler #2 days
+            tripPoint = 0.5
+        else:
+            tripPoint = self.sweepParam_thresh
         buyArr = np.zeros(len(refTime))
         
         integratorArr = np.zeros(len(refTime))
@@ -214,6 +237,7 @@ class StockPredictor:
             elif integratorArr[x] <= -tripPoint:
                 integratorArr[x] = tripPoint + integratorArr[x]
                 buyArr[x] = -1
+                
         
         
         
@@ -224,6 +248,9 @@ class StockPredictor:
         
         self.toBuy = buyArr
         self.integratorRaw = integratorArr    
+        
+        #Add debugging object variables:
+        self.debug_scaleArr = scaleArr
             
             
         returnData = combList

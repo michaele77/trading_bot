@@ -162,17 +162,20 @@ class BankAccount:
             cashArr = timeLapse.copy()
             stockArr = timeLapse.copy()
             
+            debugVal_pos = 30000 #Showing when stock was bought
+            debugVal_neg = 25000 #Showing when stock was sold
+            
             for i in range(len(refTime)):
                 currStock = data[i + tOffset]
                 
                 if self.heuristic.toBuy[i] > 0 and currStock < self.cashPool:
                     self.stockOwnership += 1
                     self.cashPool -= currStock
-                    boughtArr[i] = 100
+                    boughtArr[i] = debugVal_pos
                 elif self.heuristic.toBuy[i] < 0 and self.stockOwnership > 0:
                     self.stockOwnership -= 1
                     self.cashPool += currStock
-                    boughtArr[i] = -100
+                    boughtArr[i] = debugVal_neg
                     
                 
                 self.totalAssets = self.stockOwnership*currStock + self.cashPool
