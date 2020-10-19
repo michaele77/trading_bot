@@ -54,12 +54,19 @@ f.close()
 #sweepList_avgT = [int(1), int(2), int(4), int(7)]
 #sweepList_thresh = [0.05, 0.1, 0.25, 0.5, 1]
 
-#Sweep 2:
+##Sweep 2:
+#numMin = 331.246
+#temp = list(range(10))
+#sweepList_recT = [(i*8 + 5)/numMin for i in temp]
+#sweepList_avgT = [0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4, 2.6] 
+#sweepList_thresh = [0.02, 0.04, 0.5, 0.06, 0.08, 0.1]
+
+#Sweep 3:
 numMin = 331.246
 temp = list(range(10))
-sweepList_recT = [(i*8 + 5)/numMin for i in temp]
-sweepList_avgT = [0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4, 2.6] 
-sweepList_thresh = [0.02, 0.04, 0.5, 0.06, 0.08, 0.1]
+sweepList_recT = [(i*6 + 5)/numMin for i in temp]
+sweepList_avgT = [2, 2.5, 3, 3.5, 4, 4.5, 5] 
+sweepList_thresh = [0.05, 0.01, 0.015, 0.02, 0.03, 0.04, 0.05]
 
 paramNum = len(sweepList_avgT)*len(sweepList_recT)*len(sweepList_thresh)
 

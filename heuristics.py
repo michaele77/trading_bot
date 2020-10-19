@@ -73,6 +73,7 @@ class StockPredictor:
             if self.sweepParam_avgT is None:
                 window_avg = 3
                 window_avg = 0.5
+                window_avg = 3
             else:
                 window_avg = self.sweepParam_avgT
             
@@ -80,6 +81,7 @@ class StockPredictor:
 #                window_rec = 90/460 #Should correspond to 90 minutes
                 window_rec = 90/331.246 #Should correspond to 90 minutes
                 window_rec = 0.6 
+                window_rec = 0.07
             else:
                 window_rec = self.sweepParam_recT
             
@@ -219,7 +221,7 @@ class StockPredictor:
         if self.sweepParam_thresh is None:
             tripScaler = 1 #Scales the trip-point (which is counted in days) by average avg - rec difference
             tripPoint = 0.2*tripScaler #2 days
-            tripPoint = 0.5
+            tripPoint = 0.03
         else:
             tripPoint = self.sweepParam_thresh
         buyArr = np.zeros(len(refTime))
