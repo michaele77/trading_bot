@@ -40,6 +40,7 @@ from heuristics import StockPredictor
 from moneyManager import BankAccount
 
 import os, datetime
+import time
 
 #~~~Load in the data before sweep loops~~~
 #    f = open('test_data/stockdata_7_27.pckl', 'rb')
@@ -64,19 +65,29 @@ f.close()
 #Sweep 3:
 numMin = 331.246
 temp = list(range(10))
-sweepList_recT = [(i*6 + 5)/numMin for i in temp]
-sweepList_avgT = [2, 2.5, 3, 3.5, 4, 4.5, 5] 
-sweepList_thresh = [0.05, 0.01, 0.015, 0.02, 0.03, 0.04, 0.05]
+#sweepList_recT = [(i*6 + 5)/numMin for i in temp]
+sweepList_recT = [0.08,0.10,0.12,0.14,0.16,0.18]
+#sweepList_avgT = [2, 2.5, 3, 3.5, 4, 4.5, 5] 
+sweepList_avgT = [2] 
+#sweepList_thresh = [0.01, 0.015, 0.02]
+sweepList_thresh = [0.05,0.01,0.015,0.02]
 
-paramNum = len(sweepList_avgT)*len(sweepList_recT)*len(sweepList_thresh)
+sweepList_deltaThresh = [0,0.1,0.25,0.5,0.75,1,1.25,1.5,1.75,2] #Define as a portion of the nominal threshold
+
+
+paramNum = len(sweepList_avgT)*len(sweepList_recT)*len(sweepList_thresh)*len(sweepList_deltaThresh)
+
+
+print('We will be running through ' + str(paramNum) + ' parameters')
+time.sleep(1)
 
 
 
 #~~~INITIALIZE STOCK PREDICTOR CLASS ~~~
 mySP = StockPredictor('invmean', 'data')
-#    mySP.data_loader(fullData['SPY'][:,np.r_[0:2, -1]])
+mySP.data_loader(fullData['SPY'][:,np.r_[0:2, -1]])
 #    mySP.data_loader(fullData['TSLA'][:,np.r_[0:2, -1]])
-mySP.data_loader(fullData['AAPL'][:,np.r_[0:2, -1]])
+#mySP.data_loader(fullData['AAPL'][:,np.r_[0:2, -1]])
 
 
 #~~~INITIALIZE BANK MANAGMENT CLASS ~~~
@@ -93,24 +104,26 @@ iTrack = 0
 for curr_recT in sweepList_recT:
     for curr_avgT in sweepList_avgT:
         for curr_thresh in sweepList_thresh:
-            iTrack += 1
-            print('Currently on sweep...' + str(iTrack))
-            
-            #reject this combination of parameters if avgT is smaller than recT...
-            if  curr_avgT <= curr_recT:
-                continue
-            
-            mySP.sweepParam_avgT = curr_avgT
-            mySP.sweepParam_recT = curr_recT
-            mySP.sweepParam_thresh = curr_thresh
-            
-            #rerun predictors for heuristics/money manager objects
-            mySP.predictor()
-            simpheurT, simpheurData, debugArr, cashArr, stockArr = refBank.timeLapse()
-            
-            #append to the tracking lists
-            paramList.append((curr_avgT, curr_recT, curr_thresh))
-            dataList.append((simpheurT, simpheurData))
+            for curr_delta in sweepList_deltaThresh:
+                iTrack += 1
+                print('Currently on sweep...' + str(iTrack))
+                
+                #reject this combination of parameters if avgT is smaller than recT...
+                if  curr_avgT <= curr_recT:
+                    continue
+                
+                mySP.sweepParam_avgT = curr_avgT
+                mySP.sweepParam_recT = curr_recT
+                mySP.sweepParam_thresh = curr_thresh
+                mySP.sweepParam_deltaThresh = curr_delta 
+                
+                #rerun predictors for heuristics/money manager objects
+                mySP.predictor()
+                simpheurT, simpheurData, debugArr, cashArr, stockArr = refBank.timeLapse()
+                
+                #append to the tracking lists
+                paramList.append((curr_avgT, curr_recT, curr_thresh, curr_delta))
+                dataList.append((simpheurT, simpheurData))
             
             
             
@@ -130,6 +143,7 @@ for i, val in enumerate(topNList):
     print('Average Time: ' + str(paramList[val][0]))
     print('Recent Time: ' + str(paramList[val][1]))
     print('Threshold: ' + str(paramList[val][2]))
+    print('Threshold Delta: ' + str(paramList[val][3]))
     print()
     
 
@@ -153,7 +167,8 @@ for i, val in enumerate(topNList):
     plt.plot(currData[0], currData[1])
     
     legendStr = 'Rank=' + str(i) + ', avgT=' + str(paramList[val][0]) + \
-    ', recT=' +  "{:.2f}".format(paramList[val][1]) + ', thresh=' + str(paramList[val][2])
+    ', recT=' +  "{:.2f}".format(paramList[val][1]) + ', thresh=' + str(paramList[val][2]) + \
+    ', dThresh=' + str(paramList[val][3])
     legendList.append(legendStr)
 plt.grid()
 plt.title('Best ' + str(topNum) + ' Parameter Combos')

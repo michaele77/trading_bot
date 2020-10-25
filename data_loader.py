@@ -45,9 +45,9 @@ if userIn == '1':
     
     mySP = StockPredictor('invmean', 'data')
     
-#    mySP.data_loader(fullData['SPY'][:,np.r_[0:2, -1]])
+    mySP.data_loader(fullData['SPY'][:,np.r_[0:2, -1]])
 #    mySP.data_loader(fullData['TSLA'][:,np.r_[0:2, -1]])
-    mySP.data_loader(fullData['AAPL'][:,np.r_[0:2, -1]])
+#    mySP.data_loader(fullData['AAPL'][:,np.r_[0:2, -1]])
     
 
 
@@ -57,9 +57,15 @@ os.makedirs(mydir)
 
 x_lowVal = 1550
 x_hiVal = 3400
-
+#~~For APPL Visualization~~
 y_lowVal = 6000
 y_hiVal = 36000
+
+
+#~~For SPY Visualization~~
+y_lowVal = 8.5e3
+y_hiVal = 18000
+
 
 plt.figure(8)
 #plt.plot(fullData['SPY'][:,-1], fullData['SPY'][:,1])

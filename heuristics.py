@@ -47,6 +47,7 @@ class StockPredictor:
         self.sweepParam_avgT = None
         self.sweepParam_recT = None
         self.sweepParam_thresh = None
+        self.sweepParam_deltaThresh = None
         
         self.debug_scaleArr = None
         
@@ -74,6 +75,7 @@ class StockPredictor:
                 window_avg = 3
                 window_avg = 0.5
                 window_avg = 3
+                window_avg = 2
             else:
                 window_avg = self.sweepParam_avgT
             
@@ -82,6 +84,7 @@ class StockPredictor:
                 window_rec = 90/331.246 #Should correspond to 90 minutes
                 window_rec = 0.6 
                 window_rec = 0.07
+                window_rec = 0.18
             else:
                 window_rec = self.sweepParam_recT
             
@@ -138,7 +141,7 @@ class StockPredictor:
 #                if mainTime[i] > 1765:
 #                    print('stop here ye foul beastie')
                 
-                if i % 10000 == 0:
+                if i % 100000 == 0:
                     print(i)
                     
                 cntr += 1
@@ -222,8 +225,15 @@ class StockPredictor:
             tripScaler = 1 #Scales the trip-point (which is counted in days) by average avg - rec difference
             tripPoint = 0.2*tripScaler #2 days
             tripPoint = 0.03
+            tripPoint = 0.015
+            
+            temp_dT = 1
+            tripPoint_sell = tripPoint*(1+temp_dT) #Just set them to be equal
         else:
             tripPoint = self.sweepParam_thresh
+            
+            tripPoint_sell = self.sweepParam_thresh * (1+self.sweepParam_deltaThresh)
+            
         buyArr = np.zeros(len(refTime))
         
         integratorArr = np.zeros(len(refTime))
@@ -231,13 +241,15 @@ class StockPredictor:
         integratorArr[0] = integratorSeed + predArr[0]
         for x in range(1, len(refTime)):
             #make sure to scale the prediction array
+            
+            ##Modification: Build in a RESISTANCE TO SELLING to account for monotonic (ish) increase of market
             integratorArr[x] = predArr[x]*scaleArr[x] + integratorArr[x-1]
             
             if integratorArr[x] >= tripPoint:
                 integratorArr[x] = integratorArr[x] - tripPoint
                 buyArr[x] = 1
-            elif integratorArr[x] <= -tripPoint:
-                integratorArr[x] = tripPoint + integratorArr[x]
+            elif integratorArr[x] <= -tripPoint_sell:
+                integratorArr[x] = tripPoint_sell + integratorArr[x]
                 buyArr[x] = -1
                 
         
