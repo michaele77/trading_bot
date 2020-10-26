@@ -51,7 +51,7 @@ dLen = len(dTime)
 
 
 #~~~Splice up the full data into N chunks~~~
-random.seed(7)
+random.seed(11)
 N_chunks = 10000 #start with a decent-sized number
 
 #TODO: extend the length of time covered with decimation 
@@ -61,10 +61,156 @@ trainingLength = 500
 actionPeriod = 5
 halfConfirmWindow = 750 #look this much on each side of the anchor point to confirm local trough
 
-#Narrow down which points are chooseable
-bounds = max(trainingLength, halfConfirmWindow)
-choose_dTime = dTime[bounds : -bounds]
-choose_sData = sData[bounds : -bounds]
+bounds = max(trainingLength, halfConfirmWindow) #define choosable bounds
+
+
+#Make lists of "anchor points" and training data for said anchor points
+#These should be N_chunks long
+anchorPoints_list = []
+anchorTime_list = []
+anchorData_list = []
+confirmData_list = []
+chooseLength = len(dTime) - 2*bounds
+for i in range(N_chunks):
+    tempI = random.randint(bounds, dLen - bounds)
+    
+    anchorPoints_list.append(tempI)
+    anchorTime_list.append(dTime[tempI - trainingLength : tempI])
+    anchorData_list.append(sData[tempI - trainingLength : tempI])
+    confirmData_list.append(sData[tempI - halfConfirmWindow : tempI + halfConfirmWindow])
+    
+
+#Now apply our heuristic for defining "troughiness"
+#Defined as:
+#   how low the current anchor point is relative to the confirm window's range
+#   = (max(confirmWindow) - anchorPoint) / (max(confirmWindow) - min(confirmWindow))
+
+#   this essentially translates to a "confidence" of whether to buy right now or not
+troughiness_list = []
+for i, curr_anchor in enumerate(anchorPoints_list):
+    confirmArr = confirmData_list[i]
+    confRange = max(confirmArr) - min(confirmArr)
+    temp_trough = (max(confirmArr) - sData[curr_anchor]) / confRange
+    
+    troughiness_list.append(temp_trough)
+    
+
+#Plot histogram of troughiness values list to confirm we have a good value spread
+plt.hist(troughiness_list, bins = 'auto')
+    
+
+
+
+
+#~~~Construct our PyTorch model~~~
+
+#Start with a simple, 2 layer Neural Net
+#500 point vector --> 500xN affine layer --> ReLU --> Nx1 affine layer --> output
+#loss (for now) is simply L1 absolute distance, or:
+#   abs(true_troughiness - pred_troughiness)
+
+
+from torch import nn
+import torch
+import copy
+
+input_size = trainingLength
+hidden_sizes = [256, 128]
+output_size = 1
+
+N = 100 #For now, do 1000 batches of 100 for minibatches
+
+
+#define custom loss function
+def my_loss(output, target):
+    loss = torch.sum(torch.square(output - target))
+    return loss
+
+
+
+#x = torch.randn(N, input_size)
+#y = torch.randn(N, output_size)
+
+# Build a feed-forward network
+model = nn.Sequential(nn.Linear(input_size, hidden_sizes[0]),
+                      nn.ReLU(),
+                      nn.Linear(hidden_sizes[0], hidden_sizes[1]),
+                      nn.ReLU(),
+                      nn.Linear(hidden_sizes[1], output_size),
+                      )
+#                      nn.Softmax(dim=1))
+#print(model)
+
+lr = 5e-8
+lossGoal = 5
+loss_record = []
+minLoss = inf
+for i in range(50000):
+    miniBatch_idx = np.random.choice(N_chunks, N, replace = False)
+    x_np = np.take(anchorData_list, miniBatch_idx, axis=0) #gives NxtrainingLength minibatch
+    y_np = np.take(troughiness_list, miniBatch_idx, axis=0)
+    y_np.resize(N,1) #So that there is no mistaken broadcasting in the loss calc...
+    
+    x = torch.from_numpy(x_np).float()
+    y = torch.from_numpy(y_np).float()
+    
+    y_pred = model(x)
+    
+    
+    loss = my_loss(y_pred, y)
+    
+    if i % 250 == 0:
+        print(i, loss.item())
+        
+    model.zero_grad()
+
+    loss.backward()
+    with torch.no_grad():
+        for param in model.parameters():
+            param.data -= lr * param.grad
+        
+        loss_record.append(loss.item())
+        
+        if loss.item() < minLoss:
+            minLoss = loss.item()
+            print('New Loss Record! = ' + str(minLoss))
+            bestModel = copy.deepcopy(model)
+            
+        if loss.item() < lossGoal:
+            lr = lr/10
+            lossGoal -= 0.5
+            
+            print(i, 'New lr: ' + str(lr) + ' New lossGoal: ' + str(lossGoal))
+    
+    
+#
+#class Network(nn.Module):
+#    def __init__(self):
+#        super().__init__()
+#        
+#        # Inputs to hidden layer linear transformation
+#        self.affine_1 = nn.Linear(trainingLength, hiddenN)
+#        # Output layer, 10 units - one for each digit
+#        self.affine_2 = nn.Linear(hiddenN, 1)
+#        
+#        # Define sigmoid activation and softmax output 
+#        self.sigmoid = nn.Sigmoid()
+#        self.softmax = nn.Softmax(dim=1)
+#        
+#    def forward(self, x):
+#        # Pass the input tensor through each of our operations
+#        x = self.hidden(x)
+#        x = self.sigmoid(x)
+#        x = self.output(x)
+#        x = self.softmax(x)
+#        
+#        return x
+#
+#   
+#    
+#
+#    
+#    
 
 
 
