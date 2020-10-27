@@ -97,6 +97,43 @@ for i, curr_anchor in enumerate(anchorPoints_list):
 
 #Plot histogram of troughiness values list to confirm we have a good value spread
 plt.hist(troughiness_list, bins = 'auto')
+
+
+
+
+
+#~~~Do the above splicing again for some amount of testing points~~~
+
+
+random.seed(100)
+test_N_chunks = 1000 #start with a decent-sized number
+
+#Make lists of "anchor points" and training data for said anchor points
+#These should be N_chunks long
+test_anchorPoints_list = []
+test_anchorTime_list = []
+test_anchorData_list = []
+test_confirmData_list = []
+for i in range(test_N_chunks):
+    tempI = random.randint(bounds, dLen - bounds)
+    
+    test_anchorPoints_list.append(tempI)
+    test_anchorTime_list.append(dTime[tempI - trainingLength : tempI])
+    test_anchorData_list.append(sData[tempI - trainingLength : tempI])
+    test_confirmData_list.append(sData[tempI - halfConfirmWindow : tempI + halfConfirmWindow])
+    
+
+#Now apply our heuristic for defining "troughiness"
+test_troughiness_list = []
+for i, curr_anchor in enumerate(test_anchorPoints_list):
+    confirmArr = test_confirmData_list[i]
+    confRange = max(confirmArr) - min(confirmArr)
+    temp_trough = (max(confirmArr) - sData[curr_anchor]) / confRange
+    
+    test_troughiness_list.append(temp_trough)
+    
+
+
     
 
 
@@ -123,7 +160,8 @@ N = 100 #For now, do 1000 batches of 100 for minibatches
 
 #define custom loss function
 def my_loss(output, target):
-    loss = torch.sum(torch.square(output - target))
+    loss = torch.mean(torch.abs(output - target))
+#    loss = torch.mean(torch.square(output - target))
     return loss
 
 
@@ -141,10 +179,18 @@ model = nn.Sequential(nn.Linear(input_size, hidden_sizes[0]),
 #                      nn.Softmax(dim=1))
 #print(model)
 
-lr = 5e-8
-lossGoal = 5
+lr = 1e-8
+lossGoal = 0.3
 loss_record = []
+loss_test_record = []
 minLoss = inf
+
+#set up testing arrays
+x_test = torch.from_numpy(np.array(test_anchorData_list)).float()
+y_test_np = np.array(test_troughiness_list)
+y_test_np.resize(len(test_troughiness_list),1)
+y_test = torch.from_numpy(y_test_np).float()
+
 for i in range(50000):
     miniBatch_idx = np.random.choice(N_chunks, N, replace = False)
     x_np = np.take(anchorData_list, miniBatch_idx, axis=0) #gives NxtrainingLength minibatch
@@ -159,7 +205,7 @@ for i in range(50000):
     
     loss = my_loss(y_pred, y)
     
-    if i % 250 == 0:
+    if i % 100 == 0:
         print(i, loss.item())
         
     model.zero_grad()
@@ -178,53 +224,26 @@ for i in range(50000):
             
         if loss.item() < lossGoal:
             lr = lr/10
-            lossGoal -= 0.5
+            lossGoal *= 0.7
             
             print(i, 'New lr: ' + str(lr) + ' New lossGoal: ' + str(lossGoal))
-    
-    
+            
+        
+        #test accuracy every testCycles 
+        testCycles = 1
+        if i % testCycles == 0:
+            y_test_pred = model(x_test)
+            loss_test = my_loss(y_test_pred, y_test)
+            
+            loss_test_record.append(loss_test.item())
+            
+
+
+plt.figure()
+plt.plot(loss_record)
+plt.plot(loss_test_record)
+plt.ylim([0,0.5])
 #
-#class Network(nn.Module):
-#    def __init__(self):
-#        super().__init__()
-#        
-#        # Inputs to hidden layer linear transformation
-#        self.affine_1 = nn.Linear(trainingLength, hiddenN)
-#        # Output layer, 10 units - one for each digit
-#        self.affine_2 = nn.Linear(hiddenN, 1)
-#        
-#        # Define sigmoid activation and softmax output 
-#        self.sigmoid = nn.Sigmoid()
-#        self.softmax = nn.Softmax(dim=1)
-#        
-#    def forward(self, x):
-#        # Pass the input tensor through each of our operations
-#        x = self.hidden(x)
-#        x = self.sigmoid(x)
-#        x = self.output(x)
-#        x = self.softmax(x)
-#        
-#        return x
-#
-#   
-#    
-#
-#    
-#    
-
-
-
-
-
-
-#i = 1428
-#print(dTime[i])
-#tempIndx, = np.where(dTime >= dTime[i] + 1) 
-#idx = min(tempIndx)
-#print(idx)
-#print(dTime[idx])
-#
-#print('diff is ' + str(idx - i))
 
 
 
