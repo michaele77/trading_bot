@@ -57,9 +57,21 @@ N_chunks = 10000 #start with a decent-sized number
 #TODO: extend the length of time covered with decimation 
 #(ie 1 day of minute data, followed by 6 previous days of every 30 min data, etc)
 #For now, just use past day, which is ~500 points (just leave it at that)
-trainingLength = 500
+
+
+trainingLength = 250
 actionPeriod = 5
-halfConfirmWindow = 750 #look this much on each side of the anchor point to confirm local trough
+halfConfirmWindow = 500 #look this much on each side of the anchor point to confirm local trough
+decimateBy = 1
+
+
+trainingLength = 1000
+actionPeriod = 5
+halfConfirmWindow = 1000 #look this much on each side of the anchor point to confirm local trough
+decimateBy = 5
+
+
+
 
 bounds = max(trainingLength, halfConfirmWindow) #define choosable bounds
 
@@ -75,10 +87,11 @@ for i in range(N_chunks):
     tempI = random.randint(bounds, dLen - bounds)
     
     anchorPoints_list.append(tempI)
-    anchorTime_list.append(dTime[tempI - trainingLength : tempI])
-    anchorData_list.append(sData[tempI - trainingLength : tempI])
-    confirmData_list.append(sData[tempI - halfConfirmWindow : tempI + halfConfirmWindow])
-    
+    anchorTime_list.append(dTime[tempI - trainingLength : tempI : decimateBy])
+    anchorData_list.append(sData[tempI - trainingLength : tempI : decimateBy])
+#    confirmData_list.append(sData[tempI - halfConfirmWindow : tempI + halfConfirmWindow])
+    confirmData_list.append(sData[tempI : tempI + halfConfirmWindow : decimateBy])
+     
 
 #Now apply our heuristic for defining "troughiness"
 #Defined as:
@@ -118,9 +131,10 @@ for i in range(test_N_chunks):
     tempI = random.randint(bounds, dLen - bounds)
     
     test_anchorPoints_list.append(tempI)
-    test_anchorTime_list.append(dTime[tempI - trainingLength : tempI])
-    test_anchorData_list.append(sData[tempI - trainingLength : tempI])
-    test_confirmData_list.append(sData[tempI - halfConfirmWindow : tempI + halfConfirmWindow])
+    test_anchorTime_list.append(dTime[tempI - trainingLength : tempI : decimateBy])
+    test_anchorData_list.append(sData[tempI - trainingLength : tempI : decimateBy])
+#    test_confirmData_list.append(sData[tempI - halfConfirmWindow : tempI + halfConfirmWindow])
+    test_confirmData_list.append(sData[tempI : tempI + halfConfirmWindow : decimateBy])
     
 
 #Now apply our heuristic for defining "troughiness"
@@ -150,8 +164,9 @@ for i, curr_anchor in enumerate(test_anchorPoints_list):
 from torch import nn
 import torch
 import copy
+import torch.optim as optim
 
-input_size = trainingLength
+input_size = len(anchorData_list[0])
 hidden_sizes = [256, 128]
 output_size = 1
 
@@ -169,20 +184,17 @@ def my_loss(output, target):
 #x = torch.randn(N, input_size)
 #y = torch.randn(N, output_size)
 
-# Build a feed-forward network
-model = nn.Sequential(nn.Linear(input_size, hidden_sizes[0]),
-                      nn.ReLU(),
-                      nn.Linear(hidden_sizes[0], hidden_sizes[1]),
-                      nn.ReLU(),
-                      nn.Linear(hidden_sizes[1], output_size),
-                      )
-#                      nn.Softmax(dim=1))
-#print(model)
+
+
 
 lr = 1e-8
 lossGoal = 0.3
 loss_record = []
 loss_test_record = []
+
+scatter_test = []
+scatter_test_pred = []
+scatter_test_diff = []
 minLoss = inf
 
 #set up testing arrays
@@ -191,7 +203,22 @@ y_test_np = np.array(test_troughiness_list)
 y_test_np.resize(len(test_troughiness_list),1)
 y_test = torch.from_numpy(y_test_np).float()
 
-for i in range(50000):
+
+
+
+# Set up feed forward network and optimizer
+model = nn.Sequential(nn.Linear(input_size, hidden_sizes[0]),
+                      nn.LeakyReLU(),
+                      nn.Linear(hidden_sizes[0], hidden_sizes[1]),
+                      nn.LeakyReLU(),
+                      nn.Linear(hidden_sizes[1], output_size),
+                      )
+
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+
+
+for i in range(21000):
     miniBatch_idx = np.random.choice(N_chunks, N, replace = False)
     x_np = np.take(anchorData_list, miniBatch_idx, axis=0) #gives NxtrainingLength minibatch
     y_np = np.take(troughiness_list, miniBatch_idx, axis=0)
@@ -199,6 +226,8 @@ for i in range(50000):
     
     x = torch.from_numpy(x_np).float()
     y = torch.from_numpy(y_np).float()
+    
+    model.zero_grad()
     
     y_pred = model(x)
     
@@ -208,12 +237,15 @@ for i in range(50000):
     if i % 100 == 0:
         print(i, loss.item())
         
-    model.zero_grad()
+    
 
     loss.backward()
+    optimizer.step()
+    
+    
     with torch.no_grad():
-        for param in model.parameters():
-            param.data -= lr * param.grad
+#        for param in model.parameters():
+#            param.data -= lr * param.grad
         
         loss_record.append(loss.item())
         
@@ -222,11 +254,11 @@ for i in range(50000):
             print('New Loss Record! = ' + str(minLoss))
             bestModel = copy.deepcopy(model)
             
-        if loss.item() < lossGoal:
-            lr = lr/10
-            lossGoal *= 0.7
-            
-            print(i, 'New lr: ' + str(lr) + ' New lossGoal: ' + str(lossGoal))
+#        if loss.item() < lossGoal:
+#            lr = lr/10
+#            lossGoal *= 0.8
+
+#            print(i, 'New lr: ' + str(lr) + ' New lossGoal: ' + str(lossGoal))
             
         
         #test accuracy every testCycles 
@@ -237,12 +269,53 @@ for i in range(50000):
             
             loss_test_record.append(loss_test.item())
             
+        
+        #record a scatter of y_test and y_test_pred every half epoch
+        if i % 5000 == 0:
+            scatter_test.append(y_test)
+            scatter_test_pred.append(y_test_pred)
+            scatter_test_diff.append(y_test - y_test_pred)
+            
+            
+            
 
-
+#~~~Plot loss curve~~~
 plt.figure()
 plt.plot(loss_record)
 plt.plot(loss_test_record)
-plt.ylim([0,0.5])
+plt.ylim([.2,0.4])
+
+plt.xlabel('Iteration')
+plt.ylabel('Loss')
+
+#~~~Plot scatter plots of predictions changing over epoochs~~~
+plt.figure()
+for i in range(len(scatter_test)):
+    if i == 0:
+        continue
+    plt.scatter(scatter_test[i], scatter_test_diff[i])
+plt.title('Scatter y_test Result Difference')
+plt.xlabel('y_test Troughiness')
+plt.ylabel('Troughiness Difference: real - pred')
+plt.legend(['try 1', 'try 2', 'try 3', 'try 4'])
+
+
+plt.figure()
+for i in range(len(scatter_test)):
+    if i == 0:
+        continue
+    x = scatter_test[i]
+    y = scatter_test_diff[i]
+    m, b = np.polyfit(x.resize(len(x)), y.resize(len(y)), 1)
+    
+    plt.plot(x, m*x + b)
+plt.title('Linear Regression y_test Result Difference')
+plt.xlabel('y_test Troughiness')
+plt.ylabel('Troughiness Difference: real - pred')
+plt.legend(['try 1', 'try 2', 'try 3', 'try 4'])
+plt.xlim([0,0.1])
+plt.ylim([-.55,-0.45])
+
 #
 
 
