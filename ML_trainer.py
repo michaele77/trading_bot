@@ -166,12 +166,9 @@ import torch
 import copy
 import torch.optim as optim
 from matplotlib import pyplot
+import time
 
-input_size = len(anchorData_list[0])
-hidden_sizes = [256, 128]
-output_size = 1
 
-N = 100 #For now, do 1000 batches of 100 for minibatches
 
 
 #define custom loss function
@@ -187,22 +184,15 @@ def init_normal(m):
     if type(m) == nn.Linear:
         nn.init.normal_(m.weight)
 
-
-#x = torch.randn(N, input_size)
-#y = torch.randn(N, output_size)
-        
-        
-
-
-
-#~~~Create Param Sweep~~~
-        
-psweep_lr = [1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8, 1e-9, 1e-10]
-
-
-
+#Setup one-shot parameter trackers
 lr = 1e-8
-lossGoal = 0.3
+input_size = len(anchorData_list[0])
+hidden_sizes = [256, 128]
+output_size = 1
+
+N = 100 #For now, do 1000 batches of 100 for minibatches
+
+
 loss_record = []
 loss_test_record = []
 
@@ -210,6 +200,8 @@ scatter_test = []
 scatter_test_pred = []
 scatter_test_diff = []
 minLoss = inf
+
+
 
 #set up testing arrays
 x_test = torch.from_numpy(np.array(test_anchorData_list)).float()
@@ -219,151 +211,190 @@ y_test = torch.from_numpy(y_test_np).float()
 
 
 
-
-# Set up feed forward network and optimizer
-model = nn.Sequential(nn.Linear(input_size, hidden_sizes[0]),
-                      nn.LeakyReLU(),
-                      nn.Linear(hidden_sizes[0], hidden_sizes[1]),
-                      nn.LeakyReLU(),
-                      nn.Linear(hidden_sizes[1], output_size),
-                      )
-
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-
-
-
-for i in range(int(51e3)):
-    miniBatch_idx = np.random.choice(N_chunks, N, replace = False)
-    x_np = np.take(anchorData_list, miniBatch_idx, axis=0) #gives NxtrainingLength minibatch
-    y_np = np.take(troughiness_list, miniBatch_idx, axis=0)
-    y_np.resize(N,1) #So that there is no mistaken broadcasting in the loss calc...
-    
-    x = torch.from_numpy(x_np).float()
-    y = torch.from_numpy(y_np).float()
-    
-    model.zero_grad()
-    
-    y_pred = model(x)
-    
-    
-    loss = my_loss(y_pred, y)
-    
-    if i % 100 == 0:
-        print(i, loss.item())
+#~~~Create Param Sweep~~~
         
-    
+#TODO: add different activation functions, add Adam optimizer extras, 
+psweep_lr = [1e-3, 1e-5, 1e-7, 1e-9, 1e-11]
+psweep_H1 = [32, 64, 128, 256]
+psweep_H2 = [32, 64, 128, 256]
+psweep_iterations = 15e3 
+totalIters = len(psweep_lr) * len(psweep_H1) * len(psweep_H2)
 
-    loss.backward()
-    optimizer.step()
-    
-    
-    with torch.no_grad():
-#        for param in model.parameters():
-#            param.data -= lr * param.grad
+
+psresult_y_test = []
+psresult_y_best_test = []
+psresult_time = []
+
+
+for ps_lr in psweep_lr:
+    for ps_h1 in psweep_H1:
+        for ps_h2 in psweep_H2:
+            
+            time0 = time.time()
+            # Set up feed forward network and optimizer
+            model = nn.Sequential(nn.Linear(input_size, ps_h1),
+                                  nn.LeakyReLU(),
+                                  nn.Linear(ps_h1, ps_h2),
+                                  nn.LeakyReLU(),
+                                  nn.Linear(ps_h2, output_size),
+                                  )
+            
+            optimizer = torch.optim.Adam(model.parameters(), lr=ps_lr)
+            
+            for i in range(int(psweep_iterations)):
+                miniBatch_idx = np.random.choice(N_chunks, N, replace = False)
+                x_np = np.take(anchorData_list, miniBatch_idx, axis=0) #gives NxtrainingLength minibatch
+                y_np = np.take(troughiness_list, miniBatch_idx, axis=0)
+                y_np.resize(N,1) #So that there is no mistaken broadcasting in the loss calc...
+                
+                x = torch.from_numpy(x_np).float()
+                y = torch.from_numpy(y_np).float()
+                
+                model.zero_grad()
+                
+                y_pred = model(x)
+                
+                
+                loss = my_loss(y_pred, y)
+                
+                if i % 100 == 0:
+                    print(i, loss.item())
+                    
+                
+            
+                loss.backward()
+                optimizer.step()
+                
+                
+                with torch.no_grad():
+            #        for param in model.parameters():
+            #            param.data -= lr * param.grad
+                    
+#                    loss_record.append(loss.item())
+                    
+                    if loss.item() < minLoss:
+                        minLoss = loss.item()
+                        print('New Loss Record! = ' + str(minLoss))
+                        bestModel = copy.deepcopy(model)
+                        
+                    
+#                    #test accuracy every testCycles 
+#                    testCycles = 1
+#                    if i % testCycles == 0:
+#                        y_test_pred = model(x_test)
+#                        loss_test = my_loss(y_test_pred, y_test)
+#                        
+#                        loss_test_record.append(loss_test.item())
+                        
+                    
+#                    #record a scatter of y_test and y_test_pred every half epoch
+#                    if i % 5000 == 0:
+#                        scatter_test.append(y_test)
+#                        y_best_test = bestModel(x_test)
+#                        
+#                        scatter_test_pred.append(y_best_test)
+#                        scatter_test_diff.append(y_test - y_best_test)
+            
+            with torch.no_grad():
+                psresult_time.append(time.time() - time0)
+                
+                y_best_test = bestModel(x_test)
+                
+                #Convert all data to numpy arrays and reshape:
+                y_best_test = np.array(y_best_test.reshape(len(y_best_test)))
+                y_test = np.array(y_test.reshape(len(y_test)))
+                
+                psresult_y_best_test.append(y_best_test)
+                psresult_y_test.append(y_test)
+                
+                
+psresult_y_test_std = []
+psresult_y_test_mean = []
+psresult_abs_diff = []
+
+for currY in psresult_y_best_test:
+    psresult_y_test_std.append(np.std(currY))
+    psresult_y_test_mean.append(np.mean(currY))
+    psresult_abs_diff.append(np.mean(np.abs(currY - psresult_y_test[0])))
         
-        loss_record.append(loss.item())
         
-        if loss.item() < minLoss:
-            minLoss = loss.item()
-            print('New Loss Record! = ' + str(minLoss))
-            bestModel = copy.deepcopy(model)
-            
-#        if loss.item() < lossGoal:
-#            lr = lr/10
-#            lossGoal *= 0.8
+                
+                
+   
 
-#            print(i, 'New lr: ' + str(lr) + ' New lossGoal: ' + str(lossGoal))
-            
-        
-        #test accuracy every testCycles 
-        testCycles = 1
-        if i % testCycles == 0:
-            y_test_pred = model(x_test)
-            loss_test = my_loss(y_test_pred, y_test)
-            
-            loss_test_record.append(loss_test.item())
-            
-        
-        #record a scatter of y_test and y_test_pred every half epoch
-        if i % 5000 == 0:
-            scatter_test.append(y_test)
-            y_best_test = bestModel(x_test)
-            
-            scatter_test_pred.append(y_best_test)
-            scatter_test_diff.append(y_test - y_best_test)
-            
-            
-            
-
-#Use the best model
-with torch.no_grad(): 
-    y_best_test = bestModel(x_test)
-    
-    #Convert all data to numpy arrays and reshape:
-    y_best_test = np.array(y_best_test.reshape(len(y_best_test)))
-    y_test = np.array(y_test.reshape(len(y_test)))
-    for currList in [scatter_test, scatter_test_diff, scatter_test_pred]:
-        for i in range(len(currList)):
-            currList[i] = np.array(currList[i].reshape(len(currList[i])))
-            
-    
-#~~~Plot loss curve~~~
-plt.figure()
-plt.plot(loss_record)
-plt.plot(loss_test_record)
-plt.ylim([.2,0.4])
-
-plt.xlabel('Iteration')
-plt.ylabel('Loss')
-
-#~~~Plot scatter plots of predictions changing over epoochs~~~
-plt.figure()
-for i in range(len(scatter_test)):
-    if i == 0:
-        continue
-    plt.scatter(scatter_test[i], scatter_test_diff[i])
-plt.scatter(y_test, y_test - y_best_test)
-plt.title('Scatter y_test Result Difference')
-plt.xlabel('y_test Troughiness')
-plt.ylabel('Troughiness Difference: real - pred')
-plt.legend(['try 1', 'try 2', 'try 3', 'try 4'])
-
-
-#~~~Same as above, but as historgrams (to visualize the shifting mass)~~~
-plt.figure()
-histBins = np.linspace(0,1,81)
-for i in range(len(scatter_test)-2):
+#~~~Visualization for one-shot computation~~~
+       
+#
+##Use the best model
+#with torch.no_grad(): 
+#    y_best_test = bestModel(x_test)
+#    
+#    #Convert all data to numpy arrays and reshape:
+#    y_best_test = np.array(y_best_test.reshape(len(y_best_test)))
+#    y_test = np.array(y_test.reshape(len(y_test)))
+#    for currList in [scatter_test, scatter_test_diff, scatter_test_pred]:
+#        for i in range(len(currList)):
+#            currList[i] = np.array(currList[i].reshape(len(currList[i])))
+#            
+#            
+#    
+##~~~Plot loss curve~~~
+#plt.figure()
+#plt.plot(loss_record)
+#plt.plot(loss_test_record)
+#plt.ylim([.2,0.4])
+#
+#plt.xlabel('Iteration')
+#plt.ylabel('Loss')
+#
+##~~~Plot scatter plots of predictions changing over epoochs~~~
+#plt.figure()
+#for i in range(len(scatter_test)):
 #    if i == 0:
 #        continue
-    pyplot.hist(scatter_test_pred[i], bins = histBins, alpha = 0.5, label = str(i))
-pyplot.hist(scatter_test[0], bins = histBins, alpha = 0.5, label = 'True Test')
-pyplot.legend(loc='upper right')
-plt.title('Evolving Histograms of Best Models')
-plt.xlabel('y_pred_test Result')
-plt.ylabel('Count number in bin')
-
-
-
-#~~~Same plots as above, but as linear regressions instead of scatters~~~
-plt.figure()
-for i in range(len(scatter_test)):
-    if i == 0:
-        continue
-    x = scatter_test[i]
-    y = scatter_test_diff[i]
-    m, b = np.polyfit(x.resize(len(x)), y.resize(len(y)), 1)
-    
-    plt.plot(x, m*x + b)
-
-plt.title('Linear Regression y_test Result Difference')
-plt.xlabel('y_test Troughiness')
-plt.ylabel('Troughiness Difference: real - pred')
-plt.legend(['try 1', 'try 2', 'try 3', 'try 4'])
-plt.xlim([0,0.1])
-plt.ylim([-.55,-0.45])
-
+#    plt.scatter(scatter_test[i], scatter_test_diff[i])
+#plt.scatter(y_test, y_test - y_best_test)
+#plt.title('Scatter y_test Result Difference')
+#plt.xlabel('y_test Troughiness')
+#plt.ylabel('Troughiness Difference: real - pred')
+#plt.legend(['try 1', 'try 2', 'try 3', 'try 4'])
 #
-
-
-
-
+#
+##~~~Same as above, but as historgrams (to visualize the shifting mass)~~~
+#plt.figure()
+#histBins = np.linspace(0,1,81)
+#for i in range(len(scatter_test)-2):
+##    if i == 0:
+##        continue
+#    pyplot.hist(scatter_test_pred[i], bins = histBins, alpha = 0.5, label = str(i))
+#pyplot.hist(scatter_test[0], bins = histBins, alpha = 0.5, label = 'True Test')
+#pyplot.legend(loc='upper right')
+#plt.title('Evolving Histograms of Best Models')
+#plt.xlabel('y_pred_test Result')
+#plt.ylabel('Count number in bin')
+#
+#
+#
+##~~~Same plots as above, but as linear regressions instead of scatters~~~
+#plt.figure()
+#for i in range(len(scatter_test)):
+#    if i == 0:
+#        continue
+#    x = scatter_test[i]
+#    y = scatter_test_diff[i]
+#    m, b = np.polyfit(x.resize(len(x)), y.resize(len(y)), 1)
+#    
+#    plt.plot(x, m*x + b)
+#
+#plt.title('Linear Regression y_test Result Difference')
+#plt.xlabel('y_test Troughiness')
+#plt.ylabel('Troughiness Difference: real - pred')
+#plt.legend(['try 1', 'try 2', 'try 3', 'try 4'])
+#plt.xlim([0,0.1])
+#plt.ylim([-.55,-0.45])
+#
+##
+#
+#
+#
+#
