@@ -165,6 +165,7 @@ from torch import nn
 import torch
 import copy
 import torch.optim as optim
+from matplotlib import pyplot
 
 input_size = len(anchorData_list[0])
 hidden_sizes = [256, 128]
@@ -180,10 +181,23 @@ def my_loss(output, target):
     return loss
 
 
+# initialization function, first checks the module type,
+# then applies the desired changes to the weights
+def init_normal(m):
+    if type(m) == nn.Linear:
+        nn.init.normal_(m.weight)
+
 
 #x = torch.randn(N, input_size)
 #y = torch.randn(N, output_size)
+        
+        
 
+
+
+#~~~Create Param Sweep~~~
+        
+psweep_lr = [1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8, 1e-9, 1e-10]
 
 
 
@@ -218,7 +232,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
 
 
-for i in range(21000):
+for i in range(int(51e3)):
     miniBatch_idx = np.random.choice(N_chunks, N, replace = False)
     x_np = np.take(anchorData_list, miniBatch_idx, axis=0) #gives NxtrainingLength minibatch
     y_np = np.take(troughiness_list, miniBatch_idx, axis=0)
@@ -273,12 +287,26 @@ for i in range(21000):
         #record a scatter of y_test and y_test_pred every half epoch
         if i % 5000 == 0:
             scatter_test.append(y_test)
-            scatter_test_pred.append(y_test_pred)
-            scatter_test_diff.append(y_test - y_test_pred)
+            y_best_test = bestModel(x_test)
+            
+            scatter_test_pred.append(y_best_test)
+            scatter_test_diff.append(y_test - y_best_test)
             
             
             
 
+#Use the best model
+with torch.no_grad(): 
+    y_best_test = bestModel(x_test)
+    
+    #Convert all data to numpy arrays and reshape:
+    y_best_test = np.array(y_best_test.reshape(len(y_best_test)))
+    y_test = np.array(y_test.reshape(len(y_test)))
+    for currList in [scatter_test, scatter_test_diff, scatter_test_pred]:
+        for i in range(len(currList)):
+            currList[i] = np.array(currList[i].reshape(len(currList[i])))
+            
+    
 #~~~Plot loss curve~~~
 plt.figure()
 plt.plot(loss_record)
@@ -294,12 +322,29 @@ for i in range(len(scatter_test)):
     if i == 0:
         continue
     plt.scatter(scatter_test[i], scatter_test_diff[i])
+plt.scatter(y_test, y_test - y_best_test)
 plt.title('Scatter y_test Result Difference')
 plt.xlabel('y_test Troughiness')
 plt.ylabel('Troughiness Difference: real - pred')
 plt.legend(['try 1', 'try 2', 'try 3', 'try 4'])
 
 
+#~~~Same as above, but as historgrams (to visualize the shifting mass)~~~
+plt.figure()
+histBins = np.linspace(0,1,81)
+for i in range(len(scatter_test)-2):
+#    if i == 0:
+#        continue
+    pyplot.hist(scatter_test_pred[i], bins = histBins, alpha = 0.5, label = str(i))
+pyplot.hist(scatter_test[0], bins = histBins, alpha = 0.5, label = 'True Test')
+pyplot.legend(loc='upper right')
+plt.title('Evolving Histograms of Best Models')
+plt.xlabel('y_pred_test Result')
+plt.ylabel('Count number in bin')
+
+
+
+#~~~Same plots as above, but as linear regressions instead of scatters~~~
 plt.figure()
 for i in range(len(scatter_test)):
     if i == 0:
@@ -309,6 +354,7 @@ for i in range(len(scatter_test)):
     m, b = np.polyfit(x.resize(len(x)), y.resize(len(y)), 1)
     
     plt.plot(x, m*x + b)
+
 plt.title('Linear Regression y_test Result Difference')
 plt.xlabel('y_test Troughiness')
 plt.ylabel('Troughiness Difference: real - pred')
