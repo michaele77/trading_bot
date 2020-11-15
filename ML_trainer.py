@@ -174,6 +174,7 @@ import time
 #define custom loss function
 def my_loss(output, target):
     loss = torch.mean(torch.abs(output - target))
+    loss.requires_grad = True
 #    loss = torch.mean(torch.square(output - target))
     return loss
 
@@ -183,6 +184,47 @@ def my_loss(output, target):
 def init_normal(m):
     if type(m) == nn.Linear:
         nn.init.normal_(m.weight)
+        
+        
+        
+class two_affine_layer_net(nn.Module):
+    def __init__(self, insize, h1, h2):
+        super(two_affine_layer_net, self).__init__()
+        self.linear1   = nn.Linear(insize, h1)
+        self.linear2   = nn.Linear(h1, h2)
+        self.linear3   = nn.Linear(h2, 1)
+        
+		
+
+    def forward(self, x):
+        
+#        self.l1 = self.linear1(x)
+#        self.nl1 = self.nonlin1(self.l1)
+#        self.l2 = self.linear2(self.nl1)
+#        self.nl2 = self.nonlin1(self.l2)
+#        self.l3 = self.linear3(self.nl2)
+        
+        x = nn.functional.relu(self.linear1(x))
+        x = nn.functional.relu(self.linear2(x))
+        x = self.linear3(x)
+        
+#        with torch.no_grad():
+#            self.l1 = l1
+#            self.nl1 = nl1
+#            self.l2 = l2
+#            self.nl2 = nl2
+#            self.l3 = l3
+        
+        return x
+    
+        
+    def custom_loss(self,output, target):
+        loss = torch.mean(torch.abs(output - target))
+        return loss
+            
+            
+        
+		
 
 #Setup one-shot parameter trackers
 lr = 1e-8
@@ -214,9 +256,9 @@ y_test = torch.from_numpy(y_test_np).float()
 #~~~Create Param Sweep~~~
         
 #TODO: add different activation functions, add Adam optimizer extras, 
-psweep_lr = [1e-3, 1e-5, 1e-7, 1e-9, 1e-11]
-psweep_H1 = [32, 64, 128, 256]
-psweep_H2 = [32, 64, 128, 256]
+psweep_lr = [1e-9, 1e-11]
+psweep_H1 = [128, 256]
+psweep_H2 = [128, 256]
 psweep_iterations = 15e3 
 totalIters = len(psweep_lr) * len(psweep_H1) * len(psweep_H2)
 
@@ -232,33 +274,50 @@ for ps_lr in psweep_lr:
             
             time0 = time.time()
             # Set up feed forward network and optimizer
-            model = nn.Sequential(nn.Linear(input_size, ps_h1),
-                                  nn.LeakyReLU(),
-                                  nn.Linear(ps_h1, ps_h2),
-                                  nn.LeakyReLU(),
-                                  nn.Linear(ps_h2, output_size),
-                                  )
+#            model = nn.Sequential(nn.Linear(input_size, ps_h1),
+#                                  nn.LeakyReLU(),
+#                                  nn.Linear(ps_h1, ps_h2),
+#                                  nn.LeakyReLU(),
+#                                  nn.Linear(ps_h2, output_size),
+#                                  )
+            model = two_affine_layer_net(input_size, ps_h1, ps_h2)
             
+            criteria = torch.nn.L1Loss(reduction = 'mean')
+
             optimizer = torch.optim.Adam(model.parameters(), lr=ps_lr)
             
+            
+            
+            
+            
             for i in range(int(psweep_iterations)):
+                
                 miniBatch_idx = np.random.choice(N_chunks, N, replace = False)
                 x_np = np.take(anchorData_list, miniBatch_idx, axis=0) #gives NxtrainingLength minibatch
                 y_np = np.take(troughiness_list, miniBatch_idx, axis=0)
                 y_np.resize(N,1) #So that there is no mistaken broadcasting in the loss calc...
                 
-                x = torch.from_numpy(x_np).float()
-                y = torch.from_numpy(y_np).float()
-                
-                model.zero_grad()
-                
-                y_pred = model(x)
+#                x = torch.from_numpy(x_np).float()
+#                y = torch.from_numpy(y_np).float()
+                x = torch.tensor(x, requires_grad = True)
+                y = torch.tensor(y, requires_grad = True)
                 
                 
-                loss = my_loss(y_pred, y)
+                optimizer.zero_grad()
                 
-                if i % 100 == 0:
-                    print(i, loss.item())
+#                y_pred = model(x)
+                y_pred = model.forward(x)
+#                y_pred.requires_grad = True
+#                
+                
+#                loss = model.custom_loss(y_pred, y)
+                #For loss, just use torch loss function (otherwise branches autograd graph --> problems)
+                #reduction is how the loss is output during minibatches (sum or mean output)
+                loss = criteria(y_pred, y)
+                
+                
+                
+                   
                     
                 
             
@@ -266,11 +325,15 @@ for ps_lr in psweep_lr:
                 optimizer.step()
                 
                 
+                
                 with torch.no_grad():
             #        for param in model.parameters():
             #            param.data -= lr * param.grad
                     
 #                    loss_record.append(loss.item())
+            
+                    if i % 100 == 0:
+                        print(i, loss.item())
                     
                     if loss.item() < minLoss:
                         minLoss = loss.item()
