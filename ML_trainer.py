@@ -38,6 +38,7 @@ import os, datetime
 import time
 
 import random
+import math 
 
 #~~~Load in the data before splicing ~~~
 f = open('test_data/stockdata_9_19.pckl', 'rb')
@@ -221,7 +222,14 @@ class two_affine_layer_net(nn.Module):
     def custom_loss(self,output, target):
         loss = torch.mean(torch.abs(output - target))
         return loss
-            
+    
+    
+def iterateDict(inDict):
+    for key, val in inDict.items(): 
+        if type(val) == dict:
+            iterateDict(val)
+        print(key)
+                
             
         
 		
@@ -241,7 +249,7 @@ loss_test_record = []
 scatter_test = []
 scatter_test_pred = []
 scatter_test_diff = []
-minLoss = inf
+minLoss = math.inf
 
 
 
@@ -255,10 +263,52 @@ y_test = torch.from_numpy(y_test_np).float()
 
 #~~~Create Param Sweep~~~
         
-#TODO: add different activation functions, add Adam optimizer extras, 
+#Below is the general model parameter sweeps 
 psweep_lr = [1e-9, 1e-11]
 psweep_H1 = [128, 256]
 psweep_H2 = [128, 256]
+
+#Below is the optimizer-specific parameters
+#Data sturcture is a dict, where key = optimizer type --> Dict or parameters to sweep
+
+
+#Set the links up correctly
+#optimDict['Adam'] = adam_dict
+#optimDict['RMSprop'] = RMSprop_dict
+#optimDict['SGD'] = SGD_dict
+adam_dict = {}
+RMSprop_dict = {}
+SGD_dict = {}
+
+adam_dict['lr'] = [1e-3, 1e-5, 1e-7]
+adam_dict['b1'] = [0.9, 0.8]
+adam_dict['b2'] = [0.9, 0.999]
+adam_dict['amsgrad'] = [True, False]
+
+RMSprop_dict['lr'] = [1e-3, 1e-5, 1e-7]
+RMSprop_dict['alpha'] = [0.99]
+RMSprop_dict['momentum'] = [0, 0.5, 0.7]
+
+SGD_dict['lr'] = [1e-3, 1e-5, 1e-7]
+SGD_dict['momentum'] = [0, 0.5, 0.7]
+SGD_dict['nesterov'] = [True, False]
+
+
+optimDict = {}
+optimDict['Adam'] = adam_dict
+optimDict['RMSprop'] = RMSprop_dict
+optimDict['SGD'] = SGD_dict
+
+
+        
+iterateDict(optimDict)
+        
+
+
+
+
+
+
 psweep_iterations = 15e3 
 totalIters = len(psweep_lr) * len(psweep_H1) * len(psweep_H2)
 
@@ -272,24 +322,16 @@ for ps_lr in psweep_lr:
     for ps_h1 in psweep_H1:
         for ps_h2 in psweep_H2:
             
+            ##------------------------------------------------------------
+            ##Start main training loop
+            ##------------------------------------------------------------
+                      
+            
             time0 = time.time()
-            # Set up feed forward network and optimizer
-#            model = nn.Sequential(nn.Linear(input_size, ps_h1),
-#                                  nn.LeakyReLU(),
-#                                  nn.Linear(ps_h1, ps_h2),
-#                                  nn.LeakyReLU(),
-#                                  nn.Linear(ps_h2, output_size),
-#                                  )
-            model = two_affine_layer_net(input_size, ps_h1, ps_h2)
-            
+            model = two_affine_layer_net(input_size, ps_h1, ps_h2)        
             criteria = torch.nn.L1Loss(reduction = 'mean')
-
             optimizer = torch.optim.Adam(model.parameters(), lr=ps_lr)
-            
-            
-            
-            
-            
+         
             for i in range(int(psweep_iterations)):
                 
                 miniBatch_idx = np.random.choice(N_chunks, N, replace = False)
@@ -297,40 +339,20 @@ for ps_lr in psweep_lr:
                 y_np = np.take(troughiness_list, miniBatch_idx, axis=0)
                 y_np.resize(N,1) #So that there is no mistaken broadcasting in the loss calc...
                 
-#                x = torch.from_numpy(x_np).float()
-#                y = torch.from_numpy(y_np).float()
-                x = torch.tensor(x, requires_grad = True)
-                y = torch.tensor(y, requires_grad = True)
+                x = torch.tensor(x_np, requires_grad = True)
+                y = torch.tensor(y_np, requires_grad = True)
                 
+                x = x.float()
+                y = y.float()
                 
+                #main training steps:
                 optimizer.zero_grad()
-                
-#                y_pred = model(x)
                 y_pred = model.forward(x)
-#                y_pred.requires_grad = True
-#                
-                
-#                loss = model.custom_loss(y_pred, y)
-                #For loss, just use torch loss function (otherwise branches autograd graph --> problems)
-                #reduction is how the loss is output during minibatches (sum or mean output)
                 loss = criteria(y_pred, y)
-                
-                
-                
-                   
-                    
-                
-            
                 loss.backward()
                 optimizer.step()
-                
-                
-                
+        
                 with torch.no_grad():
-            #        for param in model.parameters():
-            #            param.data -= lr * param.grad
-                    
-#                    loss_record.append(loss.item())
             
                     if i % 100 == 0:
                         print(i, loss.item())
@@ -339,24 +361,7 @@ for ps_lr in psweep_lr:
                         minLoss = loss.item()
                         print('New Loss Record! = ' + str(minLoss))
                         bestModel = copy.deepcopy(model)
-                        
-                    
-#                    #test accuracy every testCycles 
-#                    testCycles = 1
-#                    if i % testCycles == 0:
-#                        y_test_pred = model(x_test)
-#                        loss_test = my_loss(y_test_pred, y_test)
-#                        
-#                        loss_test_record.append(loss_test.item())
-                        
-                    
-#                    #record a scatter of y_test and y_test_pred every half epoch
-#                    if i % 5000 == 0:
-#                        scatter_test.append(y_test)
-#                        y_best_test = bestModel(x_test)
-#                        
-#                        scatter_test_pred.append(y_best_test)
-#                        scatter_test_diff.append(y_test - y_best_test)
+                        scatter_test_diff.append(y_test - y_best_test)
             
             with torch.no_grad():
                 psresult_time.append(time.time() - time0)
@@ -369,6 +374,11 @@ for ps_lr in psweep_lr:
                 
                 psresult_y_best_test.append(y_best_test)
                 psresult_y_test.append(y_test)
+                
+            ##------------------------------------------------------------
+            ##Stop main training loop
+            ##------------------------------------------------------------
+                      
                 
                 
 psresult_y_test_std = []
