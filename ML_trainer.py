@@ -168,6 +168,7 @@ import copy
 import torch.optim as optim
 from matplotlib import pyplot
 import time
+import itertools
 
 
 
@@ -224,11 +225,55 @@ class two_affine_layer_net(nn.Module):
         return loss
     
     
-def iterateDict(inDict):
+def iterateDict(inDict, optimizerString = None):
+    
+    totalPermutations = []
     for key, val in inDict.items(): 
         if type(val) == dict:
-            iterateDict(val)
-        print(key)
+            curr_permList = iterateDict(val, optimizerString = key)
+            totalPermutations = totalPermutations + curr_permList #dont append, adds a list entryc
+            baseLayer = False
+        else:
+            baseLayer = True
+            break
+    
+    if baseLayer:
+        #if we made it here we should be in the sub-optimizer "base layer"
+        #this just means that now we will be iterating through each optimizer's parameters
+        masterList = []
+        for key,val in inDict.items(): 
+            
+            print('optim = ' + optimizerString + ': ' + key)
+            print(val)
+            
+            #make a list of lists for all parameters in the optimizer
+            masterList.append(val)
+            
+        #now use some magic to permutate all of the list of lists (every combination)
+        #source = https://stackoverflow.com/questions/2853212/all-possible-permutations-of-a-set-of-lists-in-python
+        permutationList = list(itertools.product(*masterList))
+        
+        #Each permutation is currently a tuple
+        #Change to a list, and add to the front the optimizer
+        for i in range(len(permutationList)):
+            permutationList[i] = list(permutationList[i])
+            permutationList[i].insert(0,optimizerString)
+        
+        
+
+            
+            
+        #return the base layer permutation list to pass up to the higher level
+        return permutationList
+
+    #go into this if statement if totalPermutations is filled! (not empty)
+    if totalPermutations:
+        print(totalPermutations)
+        
+        return totalPermutations
+    
+   
+            
                 
             
         
@@ -261,12 +306,11 @@ y_test = torch.from_numpy(y_test_np).float()
 
 
 
-#~~~Create Param Sweep~~~
+#~~~setup sweep parameters~~~
         
 #Below is the general model parameter sweeps 
-psweep_lr = [1e-9, 1e-11]
-psweep_H1 = [128, 256]
-psweep_H2 = [128, 256]
+psweep_H1 = [32, 64, 128]
+psweep_H2 = [32, 64, 128]
 
 #Below is the optimizer-specific parameters
 #Data sturcture is a dict, where key = optimizer type --> Dict or parameters to sweep
@@ -301,16 +345,39 @@ optimDict['SGD'] = SGD_dict
 
 
         
-iterateDict(optimDict)
-        
+
+#returns a list of the iterations to be done (which will be used in the main training loop)
+#each list has the following structure:
+#   [code string, param_dictionary]
+#       code string = string that contains all of the parameter values for the run
+#       param_dictionary = dictionary of parameters to be used in the run
+temp_iterList = iterateDict(optimDict)
+
+#Combine the iterationList (which currently is only the optimizer-specific params) and general params
+iterationList = []
+for h1 in psweep_H1:
+    for h2 in psweep_H2:
+        saved_iterList = copy.deepcopy(temp_iterList)
+        [i.extend([h1,h2]) for i in temp_iterList]
+        iterationList = iterationList + temp_iterList
+        temp_iterList = copy.deepcopy(saved_iterList)
+
+#finally, catch exceptions in iterationList and remove those
+#exception 1: nesterov momentum requires a momentum and zero dampening
+removedItems = 0
+for i in range(len(iterationList)):
+    temp = iterationList[i - removedItems]
+    if temp[0] == 'SGD' and temp[2] < 0.001 and temp[3]:
+        iterationList.pop(i - removedItems)
+        removedItems += 1
+        print('Removed item: ' + str(i))
 
 
 
 
-
-
+#~~~Actual sweep loop~~~
 psweep_iterations = 15e3 
-totalIters = len(psweep_lr) * len(psweep_H1) * len(psweep_H2)
+totalIters = len(iterationList)
 
 
 psresult_y_test = []
@@ -318,67 +385,99 @@ psresult_y_best_test = []
 psresult_time = []
 
 
-for ps_lr in psweep_lr:
-    for ps_h1 in psweep_H1:
-        for ps_h2 in psweep_H2:
+#for ps_lr in psweep_lr:
+#    for ps_h1 in psweep_H1:
+#        for ps_h2 in psweep_H2:
+for iparams in iterationList:
+    
             
-            ##------------------------------------------------------------
-            ##Start main training loop
-            ##------------------------------------------------------------
-                      
-            
-            time0 = time.time()
-            model = two_affine_layer_net(input_size, ps_h1, ps_h2)        
-            criteria = torch.nn.L1Loss(reduction = 'mean')
-            optimizer = torch.optim.Adam(model.parameters(), lr=ps_lr)
-         
-            for i in range(int(psweep_iterations)):
-                
-                miniBatch_idx = np.random.choice(N_chunks, N, replace = False)
-                x_np = np.take(anchorData_list, miniBatch_idx, axis=0) #gives NxtrainingLength minibatch
-                y_np = np.take(troughiness_list, miniBatch_idx, axis=0)
-                y_np.resize(N,1) #So that there is no mistaken broadcasting in the loss calc...
-                
-                x = torch.tensor(x_np, requires_grad = True)
-                y = torch.tensor(y_np, requires_grad = True)
-                
-                x = x.float()
-                y = y.float()
-                
-                #main training steps:
-                optimizer.zero_grad()
-                y_pred = model.forward(x)
-                loss = criteria(y_pred, y)
-                loss.backward()
-                optimizer.step()
+    ##------------------------------------------------------------
+    ##Start main training loop
+    ##------------------------------------------------------------
+    
+    #unpack the parameters from the list
+    ps_optimizer = iparams[0]
+    ps_h1 = iparams[-2]
+    ps_h2 = iparams[-1]
+              
+    
+    time0 = time.time()
+    model = two_affine_layer_net(input_size, ps_h1, ps_h2)        
+    criteria = torch.nn.L1Loss(reduction = 'mean')
+    
+    if ps_optimizer == 'Adam':
+        ps_lr = iparams[1]
+        ps_b1 = iparams[2]
+        ps_b2 = iparams[3]
+        ps_ams = iparams[4]
+        optimizer = torch.optim.Adam(model.parameters(), lr = ps_lr, \
+                                     betas = (ps_b1, ps_b2), amsgrad = ps_ams)
+    elif ps_optimizer == 'RMSprop':
+        ps_lr = iparams[1]
+        ps_a = iparams[2]
+        ps_mom = iparams[3]
+        optimizer = torch.optim.RMSprop(model.parameters(), lr = ps_lr, \
+                                     alpha = ps_a, momentum = ps_mom)
         
-                with torch.no_grad():
+    elif ps_optimizer == 'SGD':
+        ps_lr = iparams[1]
+        ps_mom = iparams[2]
+        ps_nes = iparams[3]
+        optimizer = torch.optim.SGD(model.parameters(), lr = ps_lr, \
+                                     momentum = ps_mom, nesterov = ps_nes)
+        
+    
+     
+    for i in range(int(psweep_iterations)):
+        
+        miniBatch_idx = np.random.choice(N_chunks, N, replace = False)
+        x_np = np.take(anchorData_list, miniBatch_idx, axis=0) #gives NxtrainingLength minibatch
+        y_np = np.take(troughiness_list, miniBatch_idx, axis=0)
+        y_np.resize(N,1) #So that there is no mistaken broadcasting in the loss calc...
+        
+        x = torch.tensor(x_np, requires_grad = True)
+        y = torch.tensor(y_np, requires_grad = True)
+        
+        x = x.float()
+        y = y.float()
+        
+        #main training steps:
+        optimizer.zero_grad()
+        y_pred = model.forward(x)
+        loss = criteria(y_pred, y)
+        loss.backward()
+        optimizer.step()
+    
+        with torch.no_grad():
+    
+            if i % 4998 == 0:
+                print(i, loss.item())
             
-                    if i % 100 == 0:
-                        print(i, loss.item())
-                    
-                    if loss.item() < minLoss:
-                        minLoss = loss.item()
-                        print('New Loss Record! = ' + str(minLoss))
-                        bestModel = copy.deepcopy(model)
-                        scatter_test_diff.append(y_test - y_best_test)
-            
-            with torch.no_grad():
-                psresult_time.append(time.time() - time0)
-                
-                y_best_test = bestModel(x_test)
-                
-                #Convert all data to numpy arrays and reshape:
-                y_best_test = np.array(y_best_test.reshape(len(y_best_test)))
-                y_test = np.array(y_test.reshape(len(y_test)))
-                
-                psresult_y_best_test.append(y_best_test)
-                psresult_y_test.append(y_test)
-                
-            ##------------------------------------------------------------
-            ##Stop main training loop
-            ##------------------------------------------------------------
-                      
+            if loss.item() < minLoss and loss.item() < 0.25:
+                minLoss = loss.item()
+                print('New Loss Record! = ' + str(minLoss))
+                bestModel = copy.deepcopy(model)
+    
+    with torch.no_grad():
+        psresult_time.append(time.time() - time0)
+        
+        y_best_test = bestModel.forward(x_test)
+        
+        #Convert all data to numpy arrays and reshape:
+        y_best_test = np.array(y_best_test.reshape(len(y_best_test)))
+        y_test = np.array(y_test.reshape(len(y_test)))
+        
+        psresult_y_best_test.append(y_best_test)
+        psresult_y_test.append(y_test)
+        
+        print('~~~~~~~~~~~')
+        print('iter ' + str(len(psresult_time)) + ' finished' )
+        print('time =  ' + str(time.time() - time0) )
+        
+    ##------------------------------------------------------------
+    ##Stop main training loop
+    ##------------------------------------------------------------
+              
                 
                 
 psresult_y_test_std = []
