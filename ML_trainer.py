@@ -281,12 +281,6 @@ def iterateDict(inDict, optimizerString = None):
 
 #Setup one-shot parameter trackers
 lr = 1e-8
-input_size = len(anchorData_list[0])
-hidden_sizes = [256, 128]
-output_size = 1
-
-N = 100 #For now, do 1000 batches of 100 for minibatches
-
 
 loss_record = []
 loss_test_record = []
@@ -311,6 +305,13 @@ y_test = torch.from_numpy(y_test_np).float()
 #Below is the general model parameter sweeps 
 psweep_H1 = [32, 64, 128]
 psweep_H2 = [32, 64, 128]
+
+input_size = len(anchorData_list[0])
+output_size = 1
+
+N = 100 #For now, do 1000 batches of 100 for minibatches
+
+
 
 #Below is the optimizer-specific parameters
 #Data sturcture is a dict, where key = optimizer type --> Dict or parameters to sweep
@@ -428,6 +429,7 @@ for iparams in iterationList:
         
     
      
+    
     for i in range(int(psweep_iterations)):
         
         miniBatch_idx = np.random.choice(N_chunks, N, replace = False)
@@ -470,9 +472,16 @@ for iparams in iterationList:
         psresult_y_best_test.append(y_best_test)
         psresult_y_test.append(y_test)
         
-        print('~~~~~~~~~~~')
+        print('~~~')
         print('iter ' + str(len(psresult_time)) + ' finished' )
         print('time =  ' + str(time.time() - time0) )
+        print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
+        
+        #Zero out variables between iterations:
+        minLoss = math.inf
+        bestModel = None
+        y_best_test = None
+        y_test = None
         
     ##------------------------------------------------------------
     ##Stop main training loop
